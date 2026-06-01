@@ -1,0 +1,34 @@
+
+# 设计 / 需求 / 规划文档（本地保留，不入库）
+DESIGN.md
+REQUIREMENTS.md
+设计需求.md
+docs/design/
+.notes/
+
+# 编辑器与系统
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# 临时与日志
+*.log
+*.tmp
+tmp/
+temp/
+
+# 每个包的分析目录不入库（模板在 .kilo/skill/ 内追踪）
+com.*/
+
+# Frida 运行产物
+*.dump
+*.dex
+*.bin
+dumps/
+output/
+__pycache__/
+*.pyc
+/.kilo/plans
+kilo.json

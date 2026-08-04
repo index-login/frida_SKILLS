@@ -32,3 +32,4 @@ __pycache__/
 *.pyc
 /.kilo/plans
 kilo.json
+feedback/FEEDBACK.md

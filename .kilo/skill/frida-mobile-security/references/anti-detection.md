@@ -1,11 +1,27 @@
-# 反 Frida 检测 Pipeline
+# 反 Frida 检测 Pipeline（环境对抗）
 
-> 此文件仅在用户要求绕过 Frida 检测或主动探索反检测方案时读取。
-> 模块速查：SKILL.md §3.1，交叉信号分析：SKILL.md §八。
->
-> 绕过模块在 `scripts/bypass/`，监控模块在 `scripts/monitors/`。
+> 何时读：用户提到"绕过检测/过掉反调试/挂上就闪退/防注入/加固壳/SVC/TracerPid/GDB"时读取。
+> 由 SKILL.md 任务路由表指向，按需读取。绕过模块在 `scripts/bypass/`，监控模块在 `scripts/monitors/`。
 
 ---
+
+## 前置快速检测（无需 Frida，独立工具）
+
+- `tools/debug-gdb.bat <包名>` — ptrace 反调试检测（TracerPid + 进程存活）
+- `tools/check-anti-inject.bat <包名>` — SO 注入检测（ptrace + mem 注入）
+- `tools/check-janus.bat <apk路径>` — APK 元数据提取
+
+## 前置 Frida 环境检测（验证注入是否成功）
+
+- `scripts/checklist/fridainject.js` — **frida 环境检测项**：
+
+```bash
+frida -U -f com.app -l scripts/core/utils.js -l scripts/checklist/fridainject.js
+```
+
+- 原理：hook `Activity.onCreate` 弹窗"Frida Hook 代码注入成功!!!"
+- 判读：弹窗出现 → Frida 注入成功、无 Java 层检测；弹窗不出现 / 进程被杀 / 无输出 → 存在 frida 环境检测，转入下方 Pipeline
+- 用途：挂载前先确认"能不能挂上"，是反检测的 0 号判断
 
 ## Pipeline 全览
 
@@ -49,7 +65,7 @@ llvm-objdump -d /tmp/linker64 | grep "call_constructors"
 
 ## Phase 1：定位检测 so
 
-模块: `utils + exit_blocker + so_loader_tracer`
+模块: `scripts/core/utils.js + scripts/bypass/exit_blocker.js + scripts/bypass/so_loader_tracer.js`
 
 `exit_blocker` 用 `Interceptor.replace` 替换 `exit_group/_exit/abort/kill/tgkill` 及其 syscall 对应项，真正阻止进程退出。`so_loader_tracer` 记录闪退前最后加载的 so。
 
@@ -173,6 +189,17 @@ FP.patchBatch([
 
 ---
 
+## 症状速查
+
+| 症状 | 模式 | 模块组合 |
+|------|------|---------|
+| exit_blocker BLOCKED + 调用栈来自 pthread_create | 线程检测 | `thread_blocker(blockCallers)` 或 `thread_monitor(callerFilter)` → `function_patcher` |
+| 已知 IDA so+offset | 已分析目标 | `function_patcher.patchBatch([...])` |
+| 加固壳延迟加载 so + 检测线程 | 壳多阶段 | `thread_blocker(blockCallers)` + `waitForModule` |
+| exit_blocker 无 BLOCKED 但进程退出 | init_array SVC | `init_hook` + `hasSvc0` |
+
+---
+
 ## 经验积累
 
 以下是从实战文章中沉淀的绕过模式。**当用户提供新的绕过经验文章时，在此处按模板追加。**
@@ -206,7 +233,7 @@ FP.patchBatch([
 - **来源**: sunlife APP 实战分析
 - **症状**: `exit_blocker` 无任何 BLOCKED 日志，进程直接消失
 - **检测原理**: 在 init_array 中使用 `svc #0` 内联汇编直接调用 `exit_group`，完全绕过 libc
-- **绕过方案**: 
+- **绕过方案**:
   1. 离线 `llvm-objdump` 反汇编 linker64 找到 `call_constructors` offset
   2. `init_hook` 在 `call_constructors` 处拦截
   3. `hasSvc0` 扫描 init_array 中的每个函数，只 NOP 含 `svc #0` 指令的函数

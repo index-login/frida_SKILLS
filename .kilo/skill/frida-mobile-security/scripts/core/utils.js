@@ -212,6 +212,29 @@
         }
     };
 
+    /**
+     * 读取 [base, base+size) 的全部内存，自动处理权限。
+     * 优先直接读取（DEX 区域通常 rw- 可读），失败时对所在区域单独 Memory.protect 加 r 后重试。
+     * 不依赖 Process.enumerateRanges 全量遍历（frida-server 版本不匹配时该 API 会抛异常）。
+     * 返回 ArrayBuffer，失败返回 null。
+     */
+    Utils.readDexMemory = function (base, size) {
+        if (!base || base.isNull() || size <= 0 || size > 0x40000000) return null;
+        try {
+            return base.readByteArray(size);
+        } catch (e) {}
+        try {
+            var rg = Process.findRangeByAddress(base);
+            if (!rg) return null;
+            if (rg.protection.indexOf("r") !== 0) {
+                Memory.protect(rg.base, rg.size, "r" + rg.protection.substr(1, 2));
+            }
+            return base.readByteArray(size);
+        } catch (e) {
+            return null;
+        }
+    };
+
     Utils.safeReadCString = function (ptr, maxLen) {
         if (!ptr || ptr.isNull()) return null;
         try {
@@ -256,6 +279,55 @@
 
     Utils.timeLog = function (msg) {
         console.log("[" + Utils.timestamp() + "]", msg);
+    };
+
+    /**
+     * 获取 app 私有可写目录（/data/data/<包名>/files/dump/）。
+     * 脚本在 app 进程内执行，/data/local/tmp/ 属 root 无写权限，必须用 app 可写目录。
+     * 返回路径字符串，失败返回 null。
+     */
+    Utils.getDumpDir = function () {
+        try {
+            if (!Java.available) return null;
+            var dataDir = null;
+            Java.perform(function () {
+                var at = Java.use("android.app.ActivityThread");
+                var app = at.currentApplication();
+                if (app) {
+                    dataDir = app.getApplicationContext().getFilesDir().getAbsolutePath();
+                }
+            });
+            if (!dataDir) return null;
+            return dataDir + "/dump/";
+        } catch (e) {
+            return null;
+        }
+    };
+
+    /**
+     * 确保输出目录存在（Frida File API 无内置 mkdir，用 libc mkdir 递归创建）。
+     * 返回 true 成功 / false 失败。
+     */
+    Utils.ensureDir = function (path) {
+        if (!path) return false;
+        try {
+            var mkdir = Module.findExportByName("libc.so", "mkdir");
+            if (!mkdir) return false;
+            var mkdirFn = new NativeFunction(mkdir, 'int', ['pointer', 'int']);
+            var parts = path.split("/");
+            var cur = "";
+            for (var i = 0; i < parts.length; i++) {
+                if (parts[i] === "") continue;
+                cur += "/" + parts[i];
+                if (cur === "/data") continue;
+                try {
+                    mkdirFn(Memory.allocUtf8String(cur), 0x1ED); // 0755，已存在则忽略错误
+                } catch (e) {}
+            }
+            return true;
+        } catch (e) {
+            return false;
+        }
     };
 
     // --------------- 编码工具（Java 层加解密常用） ---------------

@@ -1,6 +1,7 @@
-# Frida API 参考手册 (API Reference)
+# Frida API 参考手册
 
-> **参考** — 本文档为 API 使用参考，供需要编写自定义代码时查阅。日常分析优先使用 `scripts/` 下的模块（见 SKILL.md）。
+> 何时读：用户提到"写自定义 hook/API 用法/Stalker/RegisterNatives/内存搜索"时读取。
+> 由 SKILL.md 任务路由表指向，按需读取。日常分析优先使用 `scripts/` 下的模块（见 SKILL.md 模块目录）。
 
 ---
 

@@ -17,7 +17,7 @@ steps: 300
 
 ## 工作流
 
-1. 用户提需求 → 先读 SKILL.md §一 任务路由，匹配意图
+1. 用户提需求 → **第一步调用 `skill` 工具加载 `frida-mobile-security`**（决策路线总控），按 SKILL.md 任务路由表匹配意图，再读对应 `references/*.md`
 2. 按决策树选模块 → 组合加载（`utils.js` 始终首个）
 3. 输出结论时标注代码位置（`file:line`），末尾附截图建议表
 4. 需跑检测工具时，提供命令让用户自行执行（方便截图），不在 Kilo 内运行
@@ -52,9 +52,10 @@ steps: 300
 | uv | 0.9.7 |
 | adb | `adb` |
 | jadx MCP | uv 托管，插件端口 8650 |
+| jadx CLI | 按环境配置：`JADX_JAR` 环境变量或 `where jadx` 定位；无则用 jadx MCP（见 unpacking.md 提示词） |
 | ghidra MCP | Python bridge，支持反编译+调试 |
 | 设备 ID | FA7A61A11178，arm64-v8a，USB 直连（`-U`） |
-| frida-server | 用户自行管理，命名为 `fuckserver`，Agent 不负责推送/重启 |
+| frida-server | 用户自行管理，命名为 `fuckserver`，Agent 不负责推送/重启，注意转发端口要要用-H |
 
 ## 项目目录管理
 
@@ -93,7 +94,7 @@ steps: 300
 
 ## 独立检测工具
 
-不依赖 Frida 的自动化检测脚本，用于前置快速检测。详见 SKILL.md §九。
+不依赖 Frida 的自动化检测脚本，用于前置快速检测。详见 SKILL.md §六。
 
 | 工具 | 检测目标 | 用法 | 前置条件 |
 |------|---------|------|---------|
@@ -104,9 +105,7 @@ steps: 300
 
 ## 指向
 
-- 决策树 + 模块目录：`SKILL.md`
-- 交叉分析：`CROSS-ANALYSIS.md`
-- 故障排查：`TROUBLESHOOTING.md`
+- 决策路线 + 路由 + 模块目录：`SKILL.md`（加载 skill 后可用）
+- 技巧分域：`references/`（anti-detection / unpacking / crypto-hook / behavior-analysis / static-analysis / native-analysis / troubleshooting / api-reference / articles）
 - 编码规范：`AGENTS.md`
-- 参考文章：`REFERENCES.md`
 - 反馈积压：`feedback/FEEDBACK.md`

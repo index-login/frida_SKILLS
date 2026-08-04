@@ -28,14 +28,36 @@
 
 ## 模块结构
 
+Skill 采用「单 skill + references 分域 + 脚本共享」结构（符合 Agent Skills 开放标准）：
+
 ```
-scripts/
-├── core/utils.js        ← 始终首个加载，提供公共工具
-├── monitors/            ← 纯观测，不修改行为
-├── bypass/              ← 主动干预，修改 app 行为
-├── checklist/           ← 检测清单脚本
-└── templates/           ← 模板，复制后修改使用
+.kilo/skill/frida-mobile-security/
+├── SKILL.md              ← 总控：任务路由 + 决策树导航 + 模块目录（精华区）
+├── references/           ← 技巧分域手册，按需读取（不注册为独立 skill）
+│   ├── anti-detection.md    环境对抗
+│   ├── unpacking.md         脱壳
+│   ├── crypto-hook.md       加密/功能 hook
+│   ├── behavior-analysis.md 行为分析
+│   ├── static-analysis.md   静态分析（jadx-mcp）
+│   ├── native-analysis.md   SO 层分析
+│   ├── troubleshooting.md   故障诊断
+│   ├── api-reference.md     Frida API 参考
+│   └── articles.md          参考文章索引
+├── scripts/              ← 脚本共享库（工具，不属于任何技巧域）
+│   ├── core/utils.js        ← 始终首个加载，提供公共工具
+│   ├── monitors/            ← 纯观测，不修改行为
+│   ├── bypass/              ← 主动干预，修改 app 行为
+│   ├── utils/               ← SO/DEX 静态工具（so_dump/dex_cache_dump/codeitem_dump 等）
+│   ├── checklist/           ← 检测清单脚本
+│   └── templates/           ← 模板，复制后修改使用
+└── tools/                 ← 独立 bat 检测工具
 ```
+
+规则：
+- **脚本是工具，不属于任何技巧域**：references 按模块名引用 `scripts/`，不复制脚本
+- **信息只存一份**：知识只存在于 SKILL.md 或某个 references 之一，不重复
+- **新技巧域**：新增 references/<域>.md 并在 SKILL.md 路由表加一行
+- **新模块**：放入对应 `scripts/` 子目录，在 SKILL.md 模块目录加一行
 
 新模块导出标准接口：
 
@@ -98,6 +120,6 @@ if (typeof CONFIG_OVERRIDE !== 'undefined') {
 
 1. 判断类型：Frida 脚本 → `scripts/`，Python 工具 → `tools/` 或 `templates/`，bat 脚本 → `tools/`
 2. 遵循上述模块规范（CONFIG、CONFIG_OVERRIDE）
-3. 更新 SKILL.md 决策树和模块目录
-4. 更新 SKILL.md 常用组合速查表
+3. 沉渍到对应技巧域：更新 SKILL.md 路由表（如新技巧域则新建 references/<域>.md）
+4. 更新 SKILL.md 模块目录和常用组合速查表
 5. 添加反馈条目（如有）

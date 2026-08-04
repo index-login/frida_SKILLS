@@ -1,0 +1,303 @@
+# SO 层分析（Native Analysis）
+
+> 何时读：用户提到"分析这个 so/native 函数/so 里的加密/字符串引用/交叉引用/逆向 so/找不到导出/STRIPPED"时读取。
+> 由 SKILL.md 任务路由表指向，按需读取。静态工具在 `scripts/utils/`，动态模块在 `scripts/monitors/`。
+
+---
+
+## 一、分层分析原则
+
+当上层 hook 失效时，按此递推下钻到更底层：
+
+```
+Java/ObjC → Java.use / ObjC.classes
+  ↓ 被绕过时
+JNI Bridge → RegisterNatives 劫持
+  ↓
+Native .so → Interceptor.attach(导出函数)
+  ↓
+libc → Interceptor.attach(libc 函数)
+  ↓
+syscall → Interceptor.attach(syscall)
+  ↓
+SVC #0 → Stalker / inline hook
+```
+
+完整调用链：`Java/ObjC → JNI/Runtime → Native .so → libc → syscall → svc`
+
+### 常见下钻场景
+
+| 现象 | 原因 | 下钻到 |
+|------|------|--------|
+| crypto_monitor 无输出 | 非 Java 层 | native_hooker |
+| file_monitor 无输出 | 函数内联 | syscall_tracer |
+| network_monitor 无 connect | 使用 sendto(UDP) | 检查 recvfrom |
+| network_monitor 无输出 | Binder/Unix Socket | syscall_tracer(traceAll:true) |
+| dl_monitor 无输出 | 自定义 linker | syscall_tracer (mmap+PROT_EXEC) |
+| native_hooker 无输出 | SO 尚未加载 | spawn 模式或 dl_monitor |
+| native_hooker [STRIPPED] | 去符号 | dlsym_tracer |
+| ssl_plaintext 无输出 | 非标准 HTTP 库 | network_monitor(showPayload:true) |
+
+---
+
+## 二、Dex2C 按需分析
+
+Dex2C = Java 方法编译成 ARM 机器码进 .so，DEX 里只剩 native 声明。**脱壳无效，做按需定位分析**（需要看哪个函数就定位哪个，不做全量逆向）。
+
+**精髓**：Java 的 GC、反射、动态特性在 C 里难实现，所以 Dex2C 只迁移关键方法（加密、签名、校验），不是全部代码——目标函数通常就是那几个关键方法，按需定位即可。
+
+**分析优先级（从轻到重）**：
+```
+① 动态 hook（默认，零成本）：拿明文/密文/key/返回值/调用链
+② unidbg 模拟执行（复现算法）：PC 上直接跑 .so，无需真机/IDA
+③ Ghidra 伪代码（理解内部）：MCP 命令行反编译，比 IDA 轻
+④ IDA（基本不用）：重量级，仅当需要深度交互逆向时
+```
+
+### 2.0 动态 hook 优先（不用开反汇编工具）
+
+```bash
+# native_hooker 直接抓参数/返回值/中间值
+frida -H 127.0.0.1:7890 -f com.app -l scripts/core/utils.js -l scripts/monitors/native_hooker.js \
+  -e 'var CONFIG_OVERRIDE={native_hooker:{targetLibs:["libTdxAndroidCore"],hookPatterns:["encrypt"]}};'
+```
+
+- 输出：参数(hexdump)/返回值/调用栈（Thread.backtrace）
+- 90% 场景到此为止：明文、密文、key、算法参数、返回值全拿到
+- 需要 key 来源 → hook 上层调用者；需要中间值 → 下钻子函数 hook
+
+### 2.1 unidbg 模拟执行（复现算法，无需真机/IDA）
+
+**场景**：hook 拿到数据但需要「复现算法」（写脚本模拟）、或 hook 拿不到完整逻辑时。
+
+**原理**：unidbg 在 PC 上模拟 Android 运行环境，直接调用 .so 的 JNI 方法，传入参数拿返回值，逐步参数打桩看中间状态。
+
+```java
+// 1. 建 emulator，加载目标 so
+Emulator emulator = AndroidEmulatorBuilder.for64Bit().build();
+Memory memory = emulator.getMemory();
+memory.setLibraryResolver(new AndroidResolver(23));
+DalvikVM vm = emulator.createDalvikVM(new File("libTdxAndroidCore.so"));
+vm.setJni(new MyJni());  // 打桩 JNI 调用
+
+// 2. 调用 JNI 方法（Java_com_tdx_crypto_Encrypt_encrypt）
+byte[] in = "hello".getBytes();
+ByteArray arg = new ByteArray(in);
+Object ret = vm.callStaticJniMethodObject(emulator,
+    "com/tdx/crypto/Encrypt/encrypt([B)[B", arg);
+// 3. 拿到密文，对比真机 hook 结果验证
+```
+
+- 依赖：`pip install unidbg`（Java 库，需 JDK）+ 目标 so 从设备 `adb pull`
+- 优点：不碰真机、不碰 IDA、可断点/打桩/打印中间值
+- 代价：环境搭建一次（约 1 小时），JNI 打桩需按目标类补
+
+**典型用途**：
+- 复现加密算法（输入→输出，写脚本批量跑）
+- 逆向 key 派生（Hook 打桩 JNI 调用，看 key 参数）
+- 绕过时间/环境校验（打桩 System.currentTimeMillis / getDeviceId）
+
+### 2.2 Ghidra 伪代码（命令行，比 IDA 轻）
+
+```bash
+# 导入 so（ARM64），对话内直接反编译目标偏移
+ghidra_import_file ./libTdxAndroidCore.so
+# 转到 scan_register_natives 输出的偏移，看伪代码
+```
+
+- 已集成 `ghidra_*` MCP 工具，命令行/对话驱动，无需手动开 GUI
+- 配合 `find_strref.py`（字符串引用）快速定位关键逻辑
+
+### 2.3 定位流程
+
+```
+Step 1: 定位 native 方法实现
+  模块: utils + scan_register_natives.js（hook RegisterNatives 动态注册）
+  输出: com.app.crypto.Encrypt.encrypt → libxxx.so + 0x1A2F4
+  ├── [Dex2C 常见] 动态注册 → 直接拿到 so+offset
+  └── [无输出] 静态注册 → Module.findExportByName("libxxx.so", "Java_...")
+
+Step 2: 按需选择分析手段（见上 2.0/2.1/2.2）
+  ├── 只要数据 → native_hooker 动态抓
+  ├── 要复现算法 → unidbg 模拟执行
+  └── 要理解内部 → Ghidra 反编译该偏移
+```
+
+## 三、SO 动态分析
+
+### 2.1 native_hooker（任意 native 函数）
+
+```bash
+frida -U -f com.app -l scripts/core/utils.js -l scripts/monitors/native_hooker.js \
+  -e 'var CONFIG_OVERRIDE={native_hooker:{targetLibs:["libencrypt"],hookPatterns:["encrypt","aes","xor"]}};'
+```
+
+- 默认模式: encrypt/decrypt/aes/rsa/des/sha/hmac/base64/xor
+- 命中后自动打印参数(hexdump)/返回值/调用栈
+- `[STRIPPED]` → 追加 `dlsym_tracer` 看运行时解析
+- 没找到明显 crypto so → 清空 targetLibs 扫描全部 /data/ so
+
+### 2.2 native_crypto_monitor（OpenSSL/BoringSSL）
+
+- 监控 EVP 加解密函数，内置 fallback 链：`EVP_CIPHER_CTX_cipher || EVP_CIPHER_CTX_get0_cipher`
+- 无输出时扩展 CRYPTO_SOS 列表：Flutter app 加 `libflutter.so`，Cronet 加 `libcronet.so`
+- 用 `scan_inline_svc.py` 或内存常量扫描定位自研算法
+
+### 2.3 dl_monitor（SO 生命周期）
+
+```bash
+frida -U -f com.app -l scripts/core/utils.js -l scripts/monitors/dl_monitor.js
+```
+
+- 加载/卸载/符号解析全生命周期
+- 无输出 → 自定义 linker → syscall_tracer (mmap+PROT_EXEC)
+
+### 2.4 动态加载库的 hook 时机
+
+```javascript
+// 监控 dlopen 以便在目标库加载时立即 hook
+var android_dlopen_ext = Module.findExportByName(null, "android_dlopen_ext");
+Interceptor.attach(android_dlopen_ext, {
+    onEnter: function (args) { this.path = args[0].readCString(); },
+    onLeave: function (retval) {
+        if (this.path && this.path.indexOf("libtarget") !== -1) {
+            var mod = Process.findModuleByName("libtarget.so");
+            // ... 执行 hook
+        }
+    }
+});
+```
+
+---
+
+## 四、SO 静态分析（Ghidra MCP）
+
+Ghidra MCP 支持反编译 + 调试（`ghidra_*` 工具），用于分析 so 的逻辑。
+
+### 3.1 工作流
+
+1. 从设备提取 so：`adb pull`（或 `so_dump.js` 动态 dump）
+2. 导入 Ghidra：`ghidra_import_file`（ARM64: `ARM:LE:64:default`）
+3. 反编译定位关键函数
+4. 结合动态 hook 验证（native_hooker + 调用栈）
+
+### 3.2 符号/字符串定位工具
+
+| 工具 | 用途 |
+|------|------|
+| `scripts/utils/find_strref.py` | 定位字符串引用（在 so 中找字符串的交叉引用） |
+| `scripts/utils/find_branch_callers.py` | 定位函数调用者（交叉引用） |
+| `scripts/utils/scan_inline_svc.py` | 扫描内联 SVC 指令（检测代码特征） |
+| `scripts/utils/fix_elf.py` | 修复 ELF header（dump 后） |
+| `scripts/utils/patch_gadget_threadnames.py` | patch gadget 线程名 |
+
+### 3.3 定位目标函数的方法（优先级从高到低）
+
+1. **导出符号** → `Module.findExportByName()`
+2. **已知特征码** → `Memory.scan()` + 特征字节
+3. **通过调用者定位** → hook 调用者，从 context/returnAddress 反查
+4. **通过字符串引用定位** → 搜索字符串 → 交叉引用
+5. **通过 PLT/GOT 表** → 解析 ELF 结构
+6. **通过 JNI RegisterNatives** → 监听动态注册
+7. **通过 Stalker 追踪** → 大面积代码追踪 + 特征分析
+
+### 3.4 处理去符号/STRIPPED 库
+
+```javascript
+// 扫描已知字节模式
+Memory.scan(mod.base, mod.size, "55 48 89 E5", { onMatch: function (address, size) { } });
+```
+
+---
+
+## 五、JNI 层分析
+
+### RegisterNatives 劫持（动态注册跟踪）
+
+```javascript
+var RegisterNatives = Module.findExportByName("libart.so", "_ZN3art3JNI15RegisterNativesEP7_JNIEnvP7_jclassPK15JNINativeMethodi");
+Interceptor.attach(RegisterNatives, {
+    onEnter: function (args) {
+        var methods = args[2];
+        var count = args[3].toInt32();
+        for (var i = 0; i < count; i++) {
+            var name = methods.add(i * 3 * Process.pointerSize).readPointer().readCString();
+            var signature = methods.add(i * 3 * Process.pointerSize + Process.pointerSize).readPointer().readCString();
+            var fnPtr = methods.add(i * 3 * Process.pointerSize + Process.pointerSize * 2).readPointer();
+            console.log("[RegisterNatives]", name, signature, fnPtr);
+        }
+    }
+});
+```
+
+### NewStringUTF 字符串捕获
+
+```javascript
+var NewStringUTF = Module.findExportByName("libart.so", "_ZN3art3JNI12NewStringUTFEP7_JNIEnvPKc");
+```
+
+---
+
+## 六、操作系统层（libc / syscall）
+
+### 文件操作链
+
+```
+高层: fopen() / fgets()
+  ↓
+中层: open() / openat() / read() / __read_chk()
+  ↓
+底层: syscall(__NR_openat, ...) / svc #0
+```
+
+### 线程操作链
+
+```
+高层: pthread_create() / java.lang.Thread.start()
+  ↓
+中层: clone() / __clone()
+  ↓
+底层: syscall(__NR_clone, ...)
+```
+
+### syscall 追踪
+
+```javascript
+var syscall = Module.findExportByName("libc.so", "syscall");
+if (syscall) {
+    Interceptor.attach(syscall, {
+        onEnter: function (args) {
+            var nr = args[0].toInt32();
+            var SYSCALL_NAMES = {
+                56: "openat", 63: "read", 64: "write", 220: "clone",
+                98: "futex", 101: "ptrace", 78: "readlinkat", 61: "write"
+            };
+            var name = SYSCALL_NAMES[nr] || ("sys_" + nr);
+            console.log("[syscall]", name, "called from:", DebugSymbol.fromAddress(this.returnAddress));
+        }
+    });
+}
+```
+
+用作模块：`utils + syscall_tracer`（内置过滤，见 `scripts/monitors/syscall_tracer.js`）。
+
+### SVC #0 内联追踪（Stalker）
+
+`svc_tracer.js` 用 Stalker 追踪 SVC 指令。性能开销大，注意：
+- 设 `duration: 30` 只追踪前 30 秒
+- 设 `targetModules: ["libexec.so"]` 只追踪检测 SO
+- 设 `filterSyscalls: [93, 94, 129, 131]` 只看 kill/exit
+- 大量 `[anon:rwx]` 输出 = 匿名 RX 段中的检测代码，记录 PC 地址用于 function_patcher
+
+---
+
+## 常用组合
+
+| 分析目标 | 模块组合 |
+|---------|---------|
+| Native 加密 | `utils + native_hooker(targetLibs:["libencrypt","libssl","libcrypto"])` |
+| SO 加载追踪 | `utils + dl_monitor` |
+| 分层下钻 | `utils + native_hooker + syscall_tracer` |
+| 字符串引用定位 | `find_strref.py` + Ghidra |
+| 内联 SVC 扫描 | `scan_inline_svc.py` |
+| Dex2C 定位 native 实现 | `utils + scan_register_natives.js` → Ghidra 单函数逆向 |

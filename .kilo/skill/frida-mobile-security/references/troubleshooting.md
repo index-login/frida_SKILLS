@@ -1,8 +1,7 @@
-# 故障诊断
+# 故障诊断（Troubleshooting）
 
-> 当 hook 不生效、进程闪退或环境异常时查阅。
-> 模块速查：SKILL.md §3.1，交叉信号分析：CROSS-ANALYSIS.md。
-> 如以下排查表无法解决，搜索最新实践：`https://weixin.sogou.com/weixin?type=2&query=frida+<关键词>`
+> 何时读：用户提到"模块无输出/闪退/ANR/hook 不生效/报错/环境异常"时读取。
+> 由 SKILL.md 任务路由表指向，按需读取。如以下排查表无法解决，搜索最新实践：`https://weixin.sogou.com/weixin?type=2&query=frida+<关键词>`
 
 ---
 
@@ -10,7 +9,7 @@
 
 | 现象 | 可能原因 | 排查 |
 |------|---------|------|
-| crypto_monitor 无输出 | Java.available=false | SKILL.md §2.1 → native_hooker |
+| crypto_monitor 无输出 | Java.available=false | native-analysis.md → native_hooker |
 | crypto_monitor 无输出 | 自定义 ClassLoader | hook ClassLoader.loadClass |
 | crypto_monitor 无输出 | 加密在 native 层 | dl_monitor 确认 crypto so |
 | file_monitor 无输出 | 函数内联 | syscall_tracer |
@@ -26,13 +25,13 @@
 
 | 现象 | 可能原因 | 排查 |
 |------|---------|------|
-| 加载 Frida 后闪退 | Frida 被检测 | 加载 exit_blocker → ANTI-DETECTION.md |
+| 加载 Frida 后闪退 | Frida 被检测 | 加载 exit_blocker → anti-detection.md |
 | exit_blocker 后仍闪退 | sigaction(SIGKILL)+raise | 额外 hook signal + kill/tgkill |
 | exit_blocker 后仍闪退 | 内联 _exit() | syscall_tracer (syscall 93/94) |
 | hook 后 ANR/卡死 | onEnter 耗时操作 | 改为异步 send() |
 | Interceptor.replace 崩溃 | 参数签名不匹配 | 检查 NativeFunction 参数类型 |
 | TypeError: not a function | replace/attach 冲突 | exit_blocker(blockSyscall:false) 或 indirectHook |
-| 进程退出但无 BLOCKED | SVC #0 内联 exit_group | ANTI-DETECTION.md 分支 B |
+| 进程退出但无 BLOCKED | SVC #0 内联 exit_group | anti-detection.md 分支 B |
 
 ---
 
@@ -85,9 +84,9 @@
 | 加载后无任何日志 | Stalker 未跟进目标线程 | 检查 `followNewThreads` 是否成功，`traceChildThreads:true` 是否开启 |
 | 有初始化日志但无 SVC 事件 | 目标 SO 尚未加载 | `spawn` 模式 + `duration` 设长一些（120s），或用 `so_loader_tracer` 确认加载时机 |
 | 过滤了所有 SVC | `filterSyscalls` 配置太窄 | 临时设为 `filterSyscalls:[]` 看全量 SVC |
-| SVC 在 libc 内被跳过 | `skipLibcSvc:true` 生效 | 壳的 direct SVC 在匿名 RX 段而非 libc，不会受影响；但若确实需要看 libc 内的 SVC，设 `skipLibcSvc:false` |
+| SVC 在 libc 内被跳过 | `skipLibcSvc:true` 生效 | 壳的 direct SVC 在匿名 RX 段而非 libc；若确实需要看 libc 内的 SVC，设 `skipLibcSvc:false` |
 | 进程闪退前一瞬间才有输出 | 检测在 Stalker 跟进前就执行了 | 配合 `init_hook` 在 constructor 前启动 Stalker，或增大 `sleepBeforeInit` |
-| 大量 `[anon:rwx]` 输出 | 匿名 RX 段中的检测代码 | 正常，这是需要关注的 SVC 来源，记录 PC 地址用于 function_patcher |
+| 大量 `[anon:rwx]` 输出 | 匿名 RX 段中的检测代码 | 正常，记录 PC 地址用于 function_patcher |
 
 ### SVC tracer 导致 app 卡死
 
@@ -157,7 +156,7 @@
 1. 用 `frida -U -n com.app:remote` 单独 attach 子进程
 2. 子进程加载轻量 agent（只含 `exit_blocker` + `init_hook(mode:'patch')`），不加载主进程的全部监控模块
 3. 确认子进程的 SO 加载链：`adb logcat | grep "do_dlopen"` 看子进程加载了哪些 SO
-4. 在 ANTI-DETECTION.md 中参考模式 16（某加固新版 — 多 so 协作 + 子进程）
+4. 在 anti-detection.md 中参考模式（多 so 协作 + 子进程）
 
 ### 子进程 attach 失败
 
@@ -184,8 +183,10 @@
 | frida -U 连不上 | frida-server 未启动或版本不匹配 | `adb shell "frida-server -D"` |
 | Java.perform 报错 | 非 JVM 进程 | `frida-ps -U` 确认进程类型 |
 | ARM64 vs ARM32 符号不匹配 | 64位设备 32位 so | `file` 命令检查架构 |
-| iOS arm64e PAC 崩溃 | 指针认证 | 见 API-REFERENCE.md |
+| iOS arm64e PAC 崩溃 | 指针认证 | 见 api-reference.md |
 | Android 高版本 linker64 符号消失 | linker 重构 | `Module.enumerateExports("linker64")` |
+
+---
 
 ## Root 检测绕过排查
 
@@ -213,6 +214,8 @@
 2. 如果应用使用 `android.os.Build` 静态字段（而非 SystemProperties），需要额外反射修改 Build 类
 3. 用 `adb shell getprop ro.build.tags` 确认设备实际值
 
+---
+
 ## Native 加密监控排查
 
 ### native_crypto_monitor 无输出
@@ -227,9 +230,9 @@
 **排查：**
 1. 确认 SO 加载顺序：`adb logcat | grep "native_crypto_monitor"` 看 dlopen 触发日志
 2. 扩展 CRYPTO_SOS 列表：Flutter app 可能需要加 `libflutter.so`，Cronet 可能需要加 `libcronet.so`
-3. 用 `check_openssl_imports.js` 扫描 SO 的导入表确认是否使用 OpenSSL
-4. 用 `find_crypto_constants.js` 扫描内存中的 AES S-Box / SM4 / MD5 init 常量（自研算法也能定位）
-5. 如果 SO 是 STRIPPED 的（无导出），用 `enum_evp_cipher_exports.js` 确认 EVP 函数是否存在
+3. 用 `check_openssl_imports.js` 扫描 SO 的导入表确认是否使用 OpenSSL ⚠️ 需开发
+4. 用 `find_crypto_constants.js` 扫描内存中的 AES S-Box / SM4 / MD5 init 常量（自研算法也能定位）⚠️ 需开发
+5. 如果 SO 是 STRIPPED 的（无导出），用 `enum_evp_cipher_exports.js` 确认 EVP 函数是否存在 ⚠️ 需开发
 
 ### API 级别不兼容
 
@@ -241,11 +244,13 @@
 1. 脚本已内置 fallback 链：`EVP_CIPHER_CTX_cipher || EVP_CIPHER_CTX_get0_cipher`
 2. 如果仍失败，在设备上 `adb shell "readelf -sW /apex/com.android.runtime/lib64/libcrypto.so | grep EVP_CIPHER"` 确认实际导出名称
 
+---
+
 ## 易盾加固排查
 
 ### 网易云音乐易盾：MSA 慢层 bypass 后仍闪退
 
-**症状：** `hook_msa_antidbg.js` 绕过 MSA 慢层后，App 仍闪退。`exit_blocker` 日志显示 BLOCKED 来自 libnesec.so。
+**症状：** `hook_msa_antidbg.js` 绕过 MSA 慢层后，App 仍闪退。`exit_blocker` 日志显示 BLOCKED 来自 libnesec.so。⚠️ 需开发
 
 **原因：** 易盾双 SDK 架构：MSA 慢层负责扫描检测（可拦），libnesec 快层负责 inline SVC kill（需 init_hook）。
 
@@ -257,13 +262,15 @@
 
 ### 招商银行：CmbShield bypass 后 DEC SDK 仍检测
 
-**症状：** `cmb_shield_bypass.js` 绕过 CmbShield 后，DEC SDK 的 ClassLoader 检测仍触发。
+**症状：** `cmb_shield_bypass.js` 绕过 CmbShield 后，DEC SDK 的 ClassLoader 检测仍触发。⚠️ 需开发
 
 **原因：** 三套 SDK 独立运行：CmbShield（native 层）、RootBeer（Java 层）、DEC SDK（Java 层 ClassLoader + 环境变量）。绕过一套不影响另一套。
 
 **排查：**
-1. 用 `cmb_all_in_one.js`（679 行）替代逐套绕过，一次性覆盖全部三套 SDK
-2. 如需单独分析 DEC：`cmb_dec_bypass.js` 专项处理 ClassLoader 突破 + Tier A/B/C 分层屏蔽
+1. 用 `cmb_all_in_one.js`（679 行）替代逐套绕过，一次性覆盖全部三套 SDK ⚠️ 需开发
+2. 如需单独分析 DEC：`cmb_dec_bypass.js` 专项处理 ClassLoader 突破 + Tier A/B/C 分层屏蔽 ⚠️ 需开发
+
+---
 
 ## 知识来源
 

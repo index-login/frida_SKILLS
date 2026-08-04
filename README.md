@@ -1,188 +1,161 @@
-# MobileRE-Skill — AI 驱动的移动端逆向分析技能集
+# MobileRE-Skill — 综合移动端逆向分析 Agent 技能集
 
-一套面向 **AI Agent（Kilo）** 的移动端逆向分析技能集，不是给人类手搓命令用的工具箱，而是让 AI 理解、决策、执行的 **可组合技能模块**。
+<div align="center">
 
-核心交付物是 `.kilo/` 下的 Agent 定义和 Skill 文档，Frida 脚本、Python 工具、bat 检测脚本是 AI 执行分析任务时调用的能力单元。
+**一个让 AI Agent（Kilo）真正"会逆向"的完整技能系统** —— 不只是 Frida 脚本，而是覆盖静态分析、动态分析、脱壳、反检测、Native 逆向、安全合规的完整逆向工作流。
 
-## 做这个 Skill 的原因
+[![License](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](LICENSE)
+[![Version](https://img.shields.io/badge/Version-v0.5.0-2ea44f?style=flat-square)](https://github.com/index-login/MobileRE-Skill)
+[![Android](https://img.shields.io/badge/Android-3DDC84?style=flat-square&logo=android&logoColor=white)](https://developer.android.com/)
+[![Frida](https://img.shields.io/badge/Frida-FF6B57?style=flat-square&logo=frida&logoColor=white)](https://frida.re/)
+[![Python](https://img.shields.io/badge/Python-3.9+-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
+[![Jadx](https://img.shields.io/badge/Jadx-6C5CE7?style=flat-square&logo=java&logoColor=white)](https://github.com/skylot/jadx)
+[![Ghidra](https://img.shields.io/badge/Ghidra-9B9B9B?style=flat-square&logo=github&logoColor=white)](https://ghidra-sre.org/)
+[![Kilo](https://img.shields.io/badge/Agent-Kilo-orange?style=flat-square&logo=github&logoColor=white)](https://kilo.ai/docs)
 
-市面上的逆向分析输出大多是孤立的单点脚本：一个加解密自吐、一个文件监控、一个 Root 检测绕过。每次做新项目都要重新拼凑散落各处的脚本，遇到加固或反检测时，单点工具一碰就崩。
+**English README** · [English](README.en.md)
 
-这个 Skill 把碎片化的能力整合成 **AI 可理解的模块系统**，让 AI 在分析时能：
+如果这个项目对你有帮助，欢迎 ⭐ Star 支持！
 
-1. **理解攻击面** — Skill 文档定义了完整的移动端攻击面决策树，AI 按图索骥
-2. **组合能力** — 通过 `-l` 参数自由组合模块，AI 根据场景动态选择
-3. **分层递推** — 从 Java 层直达 SVC 指令层，上层被反检测绕过时自动下钻
-4. **反馈优化** — 分析过程中的走不通路径、模块崩溃、缺失能力都记录到 Feedback，持续改进
+</div>
 
-## 与传统工具箱的本质区别
+---
+
+## 使用场景
+
+你只需要**用一句话描述需求**，AI 按决策树自动完成整个分析流程：
+
+| 场景 | 一句话需求示例 | AI 会做什么 |
+|------|---------------|------------|
+| 🎯 **加固脱壳** | "帮我脱壳这个 App" | 一键脱壳：默认回填、修复、去重、方法体标记，产物直接可分析 |
+| 🔐 **加密分析** | "看下这个 App 的加密算法和密钥" | Java + Native 双层加解密自吐，给出算法/密钥/IV/明文 |
+| 🛡️ **反检测绕过** | "挂上 Frida 就闪退，帮我绕过" | 6 阶段 Pipeline：定位检测 SO → 抢 init_array → 保活 → NOP 闪退函数 |
+| 🔍 **行为摸底** | "这个 App 偷偷干了什么" | 文件/网络/线程/进程/Intent 全程监控，输出行为画像 |
+| 🧩 **Dex2C/VMP 分析** | "这个加密是 native 的，帮我分析逻辑" | 定位 `so+offset`，hook 优先 / unidbg 复现 / Ghidra 伪代码 |
+| 🧬 **静态攻击面** | "帮我审计这个 App 的攻击面" | 从 Manifest 枚举 exported 组件/Provider/WebView，source→sink 追踪 |
+| 🧪 **安全合规测试** | "帮我检查这个 App 的安全合规" | 自动运行合规检测（注入/调试/WebView SSL/元数据），出具结果 |
+
+> 所有操作由 AI 完成，你不需要手敲命令或运行脚本。
+
+---
+
+## 这是什么
+
+这不是一个"Frida 脚本合集"，而是一个 **AI 逆向分析 Agent 的完整技能系统**：
+
+- 🧠 **Agent 大脑**（`.kilo/agent/reverser.md`）— 逆向分析高级研究员的角色定义，知道怎么决策
+- 📚 **领域知识**（`.kilo/skill/`）— 9 大技巧域手册：脱壳、反检测、加密分析、行为分析、静态攻击面、Native 逆向、故障诊断
+- 🔧 **能力单元**（`scripts/`）— 22 个 Frida 模块 + 6 个 Python 二进制工具 + 检测清单
+- 🛠️ **合规检测能力** — 针对注入、调试、WebView SSL、APK 元数据的检测项
+- 🔌 **MCP 集成**（`kilo.json`）— jadx-mcp（Java 反编译）+ ghidra-mcp（二进制分析）
+
+## 为什么做这个
+
+市面上的逆向输出大多是**孤立的单点脚本**：一个加解密自吐、一个文件监控、一个 Root 绕过。每次新项目都要重新拼凑，遇到加固或反检测时单点工具一碰就崩。
+
+这个 Skill 把碎片化能力整合成 **AI 可理解的模块系统**：
+
+- **AI 按决策树自动选模块**，不靠人肉记忆
+- **`-l` 参数自由组合**，场景驱动，不互相依赖
+- **分层递推**：`Java → JNI → Native → libc → syscall → SVC`，上层被绕自动下钻
+- **反馈闭环**：走不通的路径、崩溃模块、缺失能力自动记录到 `feedback/`
+
+## 与传统工具箱的区别
 
 | 维度 | 传统逆向工具箱 | 本 Skill |
 |------|---------------|----------|
-| 使用者 | 人类工程师 | **AI Agent**（Kilo 等 LLM Agent） |
+| 使用者 | 人类工程师 | **AI Agent**（Kilo 等） |
+| 交互方式 | 手敲命令 | **一句话描述需求** |
 | 核心交付 | 脚本/工具 | **Skill 文档 + Agent 定义**（`.kilo/`） |
-| 调用方式 | 手动敲命令 | AI 根据决策树自动选择和执行 |
-| 决策依据 | 人的经验 | **SKILL.md 决策树** + 攻击面文档 |
-| 反馈闭环 | 无 | **Feedback 机制**：失败路径、缺失能力自动记录 |
-| 组合方式 | 复制粘贴 | AI 通过 `-l` 参数按需组合 |
-| 分层分析 | 人自己判断 | AI 按 `Java → JNI → Native → libc → syscall → SVC` 递推 |
-| 反检测 | 手动逐层试 | **6 阶段 Pipeline**，AI 按阶段递进 |
+| 决策依据 | 人的经验 | **SKILL.md 决策树** |
+| 反馈闭环 | 无 | **Feedback 机制**自动记录失败路径 |
+| 静态分析 | 手动开 JADX | **jadx-mcp** 让 AI 直接读类源码 |
+
+---
 
 ## 架构
 
 ```
-┌──────────────────────────────────────────────────────────────┐
-│                     AI Agent (Kilo)                           │
-│  .kilo/agent/reverser.md  — Agent 角色定义                    │
-│  .kilo/skill/.../SKILL.md — 攻击面决策树 + 模块索引          │
-│  feedback/FEEDBACK.md     — 分析过程反馈闭环                  │
-├──────────────────────────────────────────────────────────────┤
-│                   Frida 动态 Hook 模块                         │
-│  monitors/ (13 个) — 纯观察，不修改行为                       │
-│  bypass/   (9 个)  — 主动干预，修改 app 行为                  │
-│  checklist/         — 检测清单                                │
-├──────────────────────────────────────────────────────────────┤
-│               Python 二进制分析工具                            │
-│  find_branch_callers · find_strref · fix_elf                 │
-│  scan_inline_svc · patch_gadget_threadnames · so_dump        │
-├──────────────────────────────────────────────────────────────┤
-│                   调试与检测工具                               │
-│  GDB 附加调试 · TracerPid 监控 · 注入检测 · APK 元数据提取    │
-├──────────────────────────────────────────────────────────────┤
-│                  反编译引擎整合 (MCP)                          │
-│  JADX — Java 反编译 · Ghidra — 二进制分析                    │
-└──────────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────┐
+│                 AI Agent (Kilo)                             │
+│  .kilo/agent/reverser.md  — Agent 角色定义                  │
+│  .kilo/skill/.../SKILL.md — 任务路由 + 决策树 + 模块索引    │
+│  feedback/FEEDBACK.md     — 分析过程反馈闭环                │
+├────────────────────────────────────────────────────────────┤
+│               Frida 动态 Hook 模块                          │
+│  monitors/ (13 个) — 纯观察，不修改行为                     │
+│  bypass/   (9 个)  — 主动干预，修改 app 行为                │
+│  utils/            — 脱壳/反编译/符号分析工具               │
+├────────────────────────────────────────────────────────────┤
+│               Python 二进制分析工具                          │
+│  find_branch_callers · find_strref · fix_elf               │
+│  scan_inline_svc · patch_gadget_threadnames · so_dump      │
+├────────────────────────────────────────────────────────────┤
+│               MCP 集成（kilo.json 配置）                    │
+│  jadx-mcp  — AI 直接读 Java 源码反编译                      │
+│  ghidra-mcp — AI 直接反汇编/调试二进制                      │
+├────────────────────────────────────────────────────────────┤
+│              合规检测能力                                    │
+│  注入检测 · 调试检测 · WebView SSL · APK 元数据             │
+└────────────────────────────────────────────────────────────┘
 ```
 
-## 反检测 Pipeline（6 阶段）
+## 关键技术
 
-AI 在分析过程中按阶段递进，遇到反检测拦截时自动进入下一阶段：
+- **一键脱壳**：`unpack.py` 6 步线性流水线（默认回填 → 补充扫描 → 自动 pull → 修复 checksum → 去重 → 方法体标记），一代/抽取壳通吃，产物直接拖 jadx
+- **反检测 Pipeline**：6 阶段自动递进（定位检测 SO → 抢 init_array → 追踪符号 → 保活 → 检测 shellcode → NOP 闪退函数）
+- **分层下钻**：`Java → JNI → Native → libc → syscall → SVC`，上层 hook 被绕过自动降级到更低层
+- **Dex2C/VMP 分析**：hook 优先拿数据 → unidbg 复现算法 → Ghidra 伪代码，不需要 IDA 重工具
+
+---
+
+## 项目结构
 
 ```
-Phase 1: so_loader_tracer    → 定位检测 SO
-Phase 2: init_hook           → 抢在 so 的 init_array 之前获取控制权
-Phase 3: dlsym_tracer        → 发现检测代码运行时动态解析了哪些符号
-Phase 4: exit_blocker        → 持续保活，阻止 exit_group/abort/kill
-Phase 5: shellcode_detector  → 检测小尺寸 mmap PROT_EXEC（动态解密 shellcode）
-Phase 6: function_patcher    → 精确 NOP 闪退函数首字节
+MobileRE-Skill/
+├── .kilo/
+│   ├── agent/
+│   │   └── reverser.md              # Agent 角色定义（逆向分析研究员）
+│   └── skill/
+│       └── frida-mobile-security/
+│           ├── SKILL.md             # 总控：任务路由 + 决策树 + 模块目录
+│           ├── references/          # 9 大技巧域手册
+│           │   ├── unpacking.md         # 脱壳
+│           │   ├── anti-detection.md    # 环境对抗
+│           │   ├── crypto-hook.md       # 加密/功能 hook
+│           │   ├── behavior-analysis.md # 行为分析
+│           │   ├── static-analysis.md   # 静态攻击面
+│           │   ├── native-analysis.md   # SO 层分析
+│           │   ├── troubleshooting.md   # 故障诊断
+│           │   ├── api-reference.md     # Frida API 参考
+│           │   └── articles.md          # 参考文章索引
+│           ├── scripts/
+│           │   ├── core/utils.js        # 公共工具（始终首个加载）
+│           │   ├── monitors/            # 13 个监控模块（纯观察）
+│           │   ├── bypass/              # 9 个干预模块（反检测等）
+│           │   ├── utils/               # 脱壳/二进制/修复工具
+│           │   │   ├── unpack.py            # 一键脱壳入口
+│           │   │   ├── codeitem_dump.js     # 抽取壳回填 dump
+│           │   │   ├── dex_finder.js        # 内存扫描 DEX
+│           │   │   ├── dex_cache_dump.js    # ART 精确 dump
+│           │   │   ├── dex_rebuilder.py     # DEX 修复（checksum/回填）
+│           │   │   ├── scan_register_natives.js  # Dex2C 定位
+│           │   │   └── ...                  # find_strref 等分析工具
+│           │   ├── checklist/           # 合规检测项
+│           │   └── templates/           # 分析模板
+│           └── tools/                   # 独立检测工具（bat）
+│               ├── check-anti-inject.bat    # 注入检测
+│               ├── debug-gdb.bat            # 调试检测
+│               └── check-janus.bat          # APK 元数据
+├── feedback/FEEDBACK.md            # 分析过程反馈闭环
+├── kilo.json                       # MCP 配置（jadx-mcp / ghidra-mcp）
+├── AGENTS.md                       # 开发规范（AI 编码约束）
+└── README.md / README.en.md        # 本文件
 ```
 
-## 模块目录
-
-### 被动观察层 — 只观测不修改（13 个模块）
-
-| 模块 | 作用层级 | 功能 |
-|------|---------|------|
-| `crypto_monitor` | Java | 加解密自吐（Cipher/MessageDigest/Mac/密钥材料） |
-| `native_crypto_monitor` | Native so | OpenSSL/BoringSSL 加密监控（EVP/AES/RSA/HMAC） |
-| `file_monitor` | libc + syscall | 文件访问监控（open/fopen/stat/readlink） |
-| `network_monitor` | libc + syscall | 网络通信监控（connect/sendto/recvfrom） |
-| `thread_monitor` | libc + syscall | 线程创建/销毁监控（pthread_create/clone） |
-| `dl_monitor` | libc + libart | 动态库加载监控（dlopen/dlsym/OpenNativeLibrary） |
-| `proc_monitor` | Java + libc + syscall | 进程执行监控（system/popen/execve/Runtime.exec） |
-| `syscall_tracer` | syscall | 系统调用追踪（ARM64 syscall 号映射 + 速率限制） |
-| `ssl_plaintext` | Java | HTTP 明文捕获（OkHttp3/HttpsURLConnection/Retrofit2） |
-| `native_hooker` | Native so | 自动 Hook 目标 SO 全部导出函数 |
-| `intent_tracker` | Java | 跨组件 Intent 污点追踪 |
-| `memory_scanner` | Java + Native | 内存敏感数据扫描（AES key/JWT/私钥/口令） |
-| `svc_tracer` | Stalker | SVC 指令级 syscall 追踪（捕获绕 libc 的直通 SVC） |
-
-### 主动干预层 — 修改应用行为（9 个模块）
-
-| 模块 | Pipeline 阶段 | 功能 |
-|------|-------------|------|
-| `exit_blocker` | Phase 4 保活 | 阻断 exit_group/\_exit/abort/kill/tgkill |
-| `so_loader_tracer` | Phase 1 | 追踪 linker64 do_dlopen，定位检测 SO |
-| `init_hook` | Phase 2 | 抢在 so 的 init_array 之前获取控制权 |
-| `dlsym_tracer` | Phase 3 | 追踪运行时动态解析的符号 |
-| `thread_blocker` | 分支 A | 阻断检测线程（pthread_create 替换 / clone PROT_NONE） |
-| `frida_feature_hider` | 辅助 | 隐藏 /proc/self/maps/status/fd 中的 Frida 特征 |
-| `shellcode_detector` | Phase 5 | 检测小尺寸 mmap PROT_EXEC（动态解密 shellcode） |
-| `function_patcher` | Phase 6 | 精确 NOP 闪退函数入口（ARM64/ARM/Thumb） |
-| `root_bypass` | 独立 | 系统性绕过 Root 检测（Java 层 + Native 层） |
-
-### 二进制分析工具
-
-| 工具 | 功能 |
-|------|------|
-| `find_branch_callers.py` | 定位 ARM64 中所有跳转到指定地址的 bl/b/b.cond/cbz/tbz 指令 |
-| `find_strref.py` | 解码 ARM64 adrp+add/adrp+ldr，找出引用指定字符串的代码 |
-| `fix_elf.py` | 修复内存 dump 出的 SO 文件的 ELF Section Header |
-| `patch_gadget_threadnames.py` | 等长替换 frida-gadget.so 的线程名（防检测） |
-| `scan_inline_svc.py` | 扫描 ARM64 SO 中所有内联 SVC 指令，解出系统调用号 |
-| `so_dump.js` | SO 内存 Dump（简易 dump / 按段 dump / JNI_OnLoad dump / mprotect 监控） |
-
-### 调试与检测工具
-
-| 工具 | 功能 | 前置条件 |
-|------|------|----------|
-| `debug-gdb.bat` + `debug.gdb` | 通过 gdbserver64 附加进程，监测 TracerPid 和进程存活 | root + gdbserver64 + NDK |
-| `check-anti-inject.bat` | 通过 AndKittyInjector 注入测试 SO，检测是否被拦截 | root + AndKittyInjector |
-| `check-janus.bat` + `GetAPKInfo.jar` | APK 元数据提取（包名、版本号等） | Java Runtime |
-
-## 常用组合速查
-
-```bash
-# 加解密自吐（Java 层）
-frida -U -f com.target.app -l utils.js -l crypto_monitor.js
-
-# 行为摸底（文件 + 网络 + 线程）
-frida -U -f com.target.app -l utils.js -l file_monitor.js -l network_monitor.js -l thread_monitor.js
-
-# HTTP 明文拦截
-frida -U -f com.target.app -l utils.js -l ssl_plaintext.js
-
-# Native 函数发现
-frida -U -f com.target.app -l utils.js -l native_hooker.js
-
-# 反检测 Pipeline（Phase 1-4）
-frida -U -f com.target.app -l utils.js -l exit_blocker.js -l so_loader_tracer.js -l init_hook.js -l dlsym_tracer.js
-
-# 完整反检测链（Phase 1-6）
-frida -U -f com.target.app -l utils.js -l exit_blocker.js -l so_loader_tracer.js -l init_hook.js -l dlsym_tracer.js -l shellcode_detector.js -l function_patcher.js
-
-# 内存敏感数据扫描
-frida -U -f com.target.app -l utils.js -l memory_scanner.js
-
-# 跨组件 Intent 污点追踪
-frida -U -f com.target.app -l utils.js -l intent_tracker.js
-
-# Root 检测绕过
-frida -U -f com.target.app -l utils.js -l root_bypass.js
-```
-
-## 运行时配置注入
-
-所有模块支持 `CONFIG_OVERRIDE`，通过 `-e` 参数注入，不动原文件：
-
-```bash
-frida -U -f com.target.app -l utils.js -l file_monitor.js \
-  -e 'var CONFIG_OVERRIDE={file_monitor:{filterPath:["/data/data/com.target/"],showBacktrace:false}}'
-```
+---
 
 ## 环境搭建
-
-### 目录结构
-
-```
-├── .kilo/                          # ◄── 核心：Agent 定义 + Skill 文档
-│   ├── agent/
-│   │   └── reverser.md             #     逆向分析 Agent 角色定义
-│   └── skill/
-│       └── frida-mobile-security/  #     移动端安全分析技能
-│           ├── SKILL.md            #     攻击面决策树 + 模块索引
-│           ├── REFERENCES.md       #     参考文档
-│           └── feedback/           #     反馈闭环
-├── scripts/
-│   ├── core/                       # 公共工具（首个加载）
-│   ├── monitors/                   # 被动观察模块（13 个）
-│   ├── bypass/                     # 主动干预模块（9 个）
-│   ├── checklist/                  # 检测清单
-│   ├── templates/                  # 分析模板
-│   └── utils/                      # Python 二进制分析工具
-├── tools/                          # 调试与检测工具
-└── AGENTS.md                       # 开发规范（AI 编码约束）
-```
 
 ### 宿主机要求
 
@@ -193,8 +166,17 @@ frida -U -f com.target.app -l utils.js -l file_monitor.js \
 | ADB | Android 调试桥 | Android SDK Platform-Tools |
 | Android NDK | GDB 调试客户端 | https://developer.android.com/ndk/downloads |
 | Java Runtime | APK 信息提取 | https://www.oracle.com/java/technologies/downloads/ |
-| JADX（可选） | Java 反编译（MCP 集成） | https://github.com/skylot/jadx |
-| Ghidra（可选） | 二进制分析（MCP 集成） | https://ghidra-sre.org/ |
+| JADX | Java 反编译 | https://github.com/skylot/jadx |
+| Ghidra | 二进制分析 | https://ghidra-sre.org/ |
+
+### MCP 配套（让 AI 直接读源码/反汇编）
+
+通过 `kilo.json` 集成，AI 分析时直接调用，无需手动开 GUI：
+
+| MCP | 作用 | 安装 |
+|-----|------|------|
+| **jadx-mcp** | AI 直接读 Java 类源码（`jadx_get_class_source` 等） | [jadx-ai-mcp](https://github.com/zinja-coder/jadx-ai-mcp) |
+| **ghidra-mcp** | AI 直接反汇编/调试二进制（`ghidra_import_file` 等） | [GhidraMCP](https://github.com/LaurieWired/GhidraMCP) |
 
 ### 测试机准备
 
@@ -204,14 +186,16 @@ adb push frida-server-<版本>-android-arm64 /data/local/tmp/fuckserver
 adb shell "chmod 755 /data/local/tmp/fuckserver"
 adb shell "su -c '/data/local/tmp/fuckserver -D'"
 
-# 2. 推送 AndKittyInjector（反注入检测用）
+# 2. 推送 AndKittyInjector（合规检测用）
 adb push AndKittyInjector /data/local/tmp/AndKittyInjector
 adb shell "chmod 755 /data/local/tmp/AndKittyInjector"
 
-# 3. 推送 gdbserver64（GDB 调试用）
+# 3. 推送 gdbserver64（调试检测用）
 adb push gdbserver64 /data/local/tmp/gdbserver64
 adb shell "chmod 755 /data/local/tmp/gdbserver64"
 ```
+
+---
 
 ## 设计原则
 
@@ -221,16 +205,21 @@ adb shell "chmod 755 /data/local/tmp/gdbserver64"
 - **可复现** — 脚本能在其他设备上跑，不依赖特定路径硬编码
 - **最小权限** — 只 hook 需要的目标，不做全量扫描
 
-## 开发规范
-
-完整规范见 [AGENTS.md](AGENTS.md)。要点：
-
-- 模块化架构：`scripts/core/`（公共工具）→ `monitors/`（观察）→ `bypass/`（干预）
-- 所有模块接受 `CONFIG_OVERRIDE` 运行时配置，不硬编码
-- Hook 前先检查目标存在性，优先用 `Interceptor.attach` 而非 `Interceptor.replace`
-- 大量数据用 `send()` 走 channel，不用 `console.log()`
-- 新模块导出标准接口：`var CONFIG = { ... }` + `CONFIG_OVERRIDE` 合并
-
 ## 许可
 
-仅供教育和授权安全测试使用。
+[MIT](LICENSE) 许可。
+
+## 免责声明
+
+本项目仅供**教育和合法授权**的安全测试使用：
+
+- 请勿用于任何未经授权的 App 分析、破解或逆向
+- 使用者须确保拥有对目标 App 进行测试的合法授权
+- 因使用本项目造成的任何法律责任由使用者自行承担
+- 如侵犯了您的权益，请联系作者删除相关内容
+
+## 支持
+
+- ⭐ Star 本项目
+- 🐛 遇到问题提交 Issue
+- 🧩 有新的检测项/模块想法，欢迎讨论
